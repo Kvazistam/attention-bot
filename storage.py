@@ -4,10 +4,10 @@ from dotenv import load_dotenv
 from sqlalchemy import String, Integer, DateTime, ForeignKey, func, select
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Mapped
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-
+from zoneinfo import ZoneInfo
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
-print(DATABASE_URL)
+TZ = os.getenv("TZ")
 class Base(DeclarativeBase):
     pass
 
@@ -51,7 +51,9 @@ async def get_random_question():
 
 async def save_answer(user_id: int,  question_id: int, answer_text: str, username: str = None):
     async with Session() as s:
-        s.add(Answer(user_id=user_id, username=username, question_id=question_id, answer_text=answer_text))
+        ts = datetime.now(ZoneInfo(TZ))
+        print(ts)
+        s.add(Answer(user_id=user_id, username=username, question_id=question_id, answer_text=answer_text, timestamp = ts))
         await s.commit()
 
 async def get_user_history(user_id: int):

@@ -1,5 +1,6 @@
 import asyncio
 import os
+from zoneinfo import ZoneInfo
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.bot import DefaultBotProperties
 from aiogram.filters import Command
@@ -7,6 +8,7 @@ from aiogram.types import Message
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from dotenv import load_dotenv
 from aiogram.types import FSInputFile
+from scheduler import refresh_user_jobs
 from storage import (
     init_db, seed_questions, get_random_question,
     save_answer, get_user_history, save_user_setting, get_user_setting
@@ -61,7 +63,8 @@ async def history(message: Message):
         return
     reply = "📚 Ответы за 7 дней:\n\n"
     for ts, q_text, a_text in hist:
-        reply += f"🕒 {ts.strftime('%d.%m %H:%M')}\n❓ {q_text}\n💬 {a_text}\n\n"
+        ts_local = ts.astimezone(ZoneInfo("Europe/Moscow"))
+        reply += f"🕒 {ts_local.strftime('%d.%m %H:%M')}\n❓ {q_text}\n💬 {a_text}\n\n"
     await message.answer(reply)
 
 @dp.message(lambda msg: msg.text == "⚙️ Настройки")
@@ -77,7 +80,9 @@ async def settings_menu(message: Message):
 @dp.message(lambda msg: msg.text in ["0 раз в день", "1 раз в день", "2 раза в день", "3 раза в день"])
 async def save_setting(message: Message):
     count = int(message.text[0])
-    await save_user_setting(message.from_user.id, count)
+    user_id = message.from_user.id
+    await save_user_setting(user_id, count)
+    await refresh_user_jobs(user_id)
     await message.answer(f"✅ Буду спрашивать {count} раз в день", reply_markup=main_menu())
 
 @dp.message(lambda msg: msg.text == "🌟 Приминг")
