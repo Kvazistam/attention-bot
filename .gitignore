@@ -1,10 +1,11 @@
 *.db
+*_old.py*
 .DS_Store
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
 *$py.class
-
+.denv
 # C extensions
 *.so
 

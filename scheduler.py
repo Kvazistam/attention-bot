@@ -1,76 +1,51 @@
 import asyncio
+import os
+import random
+import logging
+from datetime import time
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from datetime import datetime, time
-from storage import get_user_setting
-from gsheet import save_response
-import logging
-import random
-import os
-
+from storage import get_all_users_with_settings, get_user_setting, get_random_question
 from dotenv import load_dotenv
+from state import user_state
 load_dotenv()
-
 API_TOKEN = os.getenv("API_TOKEN")
-bot = Bot(token=API_TOKEN)
+bot = None
 
-# Пример списка вопросов (можно вынести в отдельный файл или Google Таблицу)
-QUESTIONS = [
-    "Что сегодня получилось особенно хорошо?",
-    "Что вызвало у тебя радость или благодарность?",
-    "Какую возможность ты сегодня заметил?",
-    "В чём сегодня ты почувствовал(а) силу, ясность, поддержку?"
-]
-
-# Настраиваем логгирование
 logging.basicConfig(level=logging.INFO)
 scheduler = AsyncIOScheduler()
 
+TIME_SLOTS = [time(19, 0), time(16, 0), time(12, 0) ]
 
-# Время запуска (можно кастомизировать)
-TIME_SLOTS = [time(9, 0), time(14, 0), time(19, 0)]
-
-
-# 📤 Отправка вопроса пользователю
 async def send_daily_question(user_id: int):
-    question = random.choice(QUESTIONS)
+    q = await get_random_question()
+    if not q:
+        return
+    # Сохраняем текущий вопрос для пользователя
+    user_state[user_id] = q.id
+    print(user_state)
     try:
-        await bot.send_message(chat_id=user_id, text=f"👀 {question}")
+        await bot.send_message(chat_id=user_id, text=f"👀 {q.text}")
     except Exception as e:
-        logging.warning(f"❌ Не удалось отправить сообщение пользователю {user_id}: {e}")
+        logging.warning(f"Не удалось отправить сообщение {user_id}: {e}")
 
-
-# 📆 Расписание отправок на основе user_settings
 async def schedule_jobs():
-    logging.info("🕓 Планирование задач...")
-
-    # Пример: список user_id из таблицы (можно заменить на свою систему хранения активных пользователей)
-    user_ids = [row[0] for row in get_all_users_with_settings()]  # список всех user_id, у кого есть настройки
-
-    for user_id in user_ids:
-        times = get_user_setting(user_id)
+    user_ids = await get_all_users_with_settings()
+    for uid in user_ids:
+        # await send_daily_question(uid)
+        times = await get_user_setting(uid)
         for i in range(times):
             if i < len(TIME_SLOTS):
-                scheduler.add_job(send_daily_question, "cron",
-                    hour=TIME_SLOTS[i].hour,
-                    minute=TIME_SLOTS[i].minute,
-                    args=[user_id],
-                    id=f"user_{user_id}_slot_{i}")
+                scheduler.add_job(
+                    send_daily_question, "cron",
+                    hour=TIME_SLOTS[i].hour, minute=TIME_SLOTS[i].minute,
+                    args=[uid], id=f"user_{uid}_slot_{i}"
+                )
+                logging.info(f"Запланировано для {uid} на {TIME_SLOTS[i]}")
 
 
-def get_all_users_with_settings():
-    import sqlite3
-    conn = sqlite3.connect("user_settings.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id FROM settings")
-    result = cursor.fetchall()
-    conn.close()
-    return result
-
-
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(schedule_jobs())
+async def start_scheduler(bot_instance: Bot):
+    global bot
+    bot = bot_instance
+    await schedule_jobs()
     scheduler.start()
-    logging.info("📡 Шедулер запущен")
-    loop.run_forever()
